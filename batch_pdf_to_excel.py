@@ -36,6 +36,20 @@ def update_query_pdf_path(query, new_pdf_path: Path):
     )
     query.Formula = new_formula
 
+def ExtractTextFromExcelCell(excelName,cellAddress):
+    excel = win32.Dispatch("Excel.Application")
+    excel.Visible = False  # set True while debugging if you want to see Excel
+
+    try:
+        wb = excel.Workbooks.Open(str(excelName))
+        ws = wb.ActiveSheet
+        cellValue = ws.Range(cellAddress).Value
+        wb.Close(SaveChanges=False)
+        return cellValue
+    finally:
+        excel.Quit()
+
+
 
 def main():
     OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
@@ -74,6 +88,8 @@ def main():
 
     finally:
         excel.Quit()
+
+
 
 
 if __name__ == "__main__":
