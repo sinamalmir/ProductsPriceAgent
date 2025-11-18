@@ -7,10 +7,12 @@ import win32com.client as win32
 # --- SETTINGS ---------------------------------------------------------
 
 # Path to your template workbook (from step 1)
-TEMPLATE_PATH = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\EXCEL\template_pdf_imports.xlsx")
+# TEMPLATE_PATH = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\EXCEL\template_pdf_imports.xlsx")
+TEMPLATE_PATH = Path(r"D:\Projects\pdfConvertor\ProductsPriceAgent\EXCEL\template_pdf_imports.xlsx")
 
 # Folder that contains PDF files to convert
-PDF_FOLDER = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\PDF")
+# PDF_FOLDER = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\PDF")
+PDF_FOLDER = Path(r"D:\Projects\pdfConvertor\ProductsPriceAgent\PDF")
 
 # Folder to save the resulting Excel files – here: same folder as this script
 OUTPUT_FOLDER = Path(__file__).parent   # or Path(r"C:\Projects\PdfToExcel\output")

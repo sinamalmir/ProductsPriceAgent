@@ -8,19 +8,22 @@ from openpyxl import load_workbook
 # ------------- SETTINGS (تنظیمات را اینجا مطابق سیستم خودت عوض کن) -------------
 
 # 1) فایل تمپلیت Power Query که از PDF وارد می‌کند (قبلی که ساختیم)
-TEMPLATE_IMPORT_XLSX = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\EXCEL\template_pdf_imports.xlsx")
+# TEMPLATE_IMPORT_XLSX = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\EXCEL\template_pdf_imports.xlsx")
+TEMPLATE_IMPORT_XLSX = Path(r"D:\Projects\pdfConvertor\ProductsPriceAgent\EXCEL\template_pdf_imports.xlsx")
 
 # 2) پوشه‌ای که PDFها داخل آن هستند
-PDF_FOLDER = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\PDF")
+# PDF_FOLDER = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\PDF")
+PDF_FOLDER = Path(r"D:\Projects\pdfConvertor\ProductsPriceAgent\PDF")
 
 # 3) پوشه خروجی فایل‌های Excel تبدیل‌شده
-OUTPUT_FOLDER = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\converted_excels")
-
+# OUTPUT_FOLDER = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\converted_excels")
+OUTPUT_FOLDER = Path(r"D:\Projects\pdfConvertor\ProductsPriceAgent\converted_excels")
 # 4) نام Query در Excel (از پنجره Queries & Connections)
 QUERY_NAME = "Query1"
 
 # 5) فایل تمپلیت نهایی که لیست مدل‌ها را دارد (همان عکسی که فرستادی)
-FINAL_TEMPLATE_PATH = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\excel_data\price_of_products.xlsx")
+# FINAL_TEMPLATE_PATH = Path(r"C:\Users\Administrator\Desktop\ExcelProcess\excel_data\price_of_products.xlsx")
+FINAL_TEMPLATE_PATH = Path(r"D:\Projects\pdfConvertor\ProductsPriceAgent\excel_data\price_of_products.xlsx")
 
 # 6) نام ستونی که می‌خواهی در آن قیمت‌ها نوشته شود
 TARGET_COLUMN_HEADER = "باطری روکاری"
@@ -180,7 +183,7 @@ def main():
     # convert_pdfs_to_excels()
 
     # فرض: فایل تبدیل‌شده‌ای که گفتی نامش مثلاً این است:
-    converted_file = OUTPUT_FOLDER / "cell_high_capacity.xlsx"
+    converted_file = OUTPUT_FOLDER / "cell  HIGH CAPACITY.xlsx"
     fill_template_from_converted_excel(converted_file)
 
 
