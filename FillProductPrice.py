@@ -22,6 +22,11 @@ FINAL_TEMPLATE_PATH = Path(r"C:\Users\Administrator\Desktop\pdfConvertor\Product
 TARGET_COLUMN_HEADER = "باطری روکاری"
 TAG_COLUMN_HEADER    = "تگ باطری"              # از JC PRODUCTS
 CAM_FRONT_HEADER     = "دوربین جلو پک کامل"    # از apple parts NORMAL (1)
+SPEACKERS_HEADER      = "اسپیکر بالا"         # از apple parts NORMAL (1)
+DOWN_SPEACKERS_HEADER = "اسپیکر پایین"      # از apple parts NORMAL (1)
+FLAT_POWER_HEADER     = "فلت پاور"           # از apple parts NORMAL (1)
+FLAT_VOLUME_HEADER    = "فلت ولوم"           # از apple parts NORMAL (1)    
+FLAT_FLASH_CAMERA_HEADER = "فلت فلش دوربین"     # از apple parts NORMAL (1)
 
 # --- جدید: فایل JC PRODUCTS و ستون «تگ باطری» ---
 JC_PRODUCTS_PATH   = Path(r"C:\Users\Administrator\Desktop\pdfConvertor\ProductsPriceAgent\converted_excels\JC PRODUCTS NORMAL.xlsx")
@@ -253,20 +258,228 @@ def fill_template_from_apple_parts_normal(apple_xlsx: Path):
     print(f"Template updated with front camera prices from {apple_xlsx.name}")
 
 
+def fill_template_from_apple_parts_normal_downSpeackers(apple_xlsx: Path):
+
+    print(f"Reading Apple Parts Normal from: {apple_xlsx}")
+
+    ap_wb = load_workbook(apple_xlsx, data_only=True)
+    ap_ws = ap_wb.active
+
+    tmpl_wb = load_workbook(FINAL_TEMPLATE_PATH)
+    tmpl_ws = tmpl_wb.active
+
+    cam_col_idx = find_column_by_header(tmpl_ws, SPEACKERS_HEADER)
+    if cam_col_idx is None:
+        raise ValueError(f"ستونی با عنوان '{SPEACKERS_HEADER}' در ردیف اول تمپلیت پیدا نشد.")
+
+    template_model_rows = build_template_model_index(tmpl_ws)
+
+    # S4:T43
+    for model_val, price_val in ap_ws.iter_rows(
+        min_row=4, max_row=43, min_col=19, max_col=20, values_only=True
+    ):
+        if not model_val or not price_val:
+            continue
+
+        norm_model = normalize_name(str(model_val))
+        row_idx = template_model_rows.get(norm_model)
+
+        if not row_idx:
+            generic_name = "iPhone " + str(model_val).strip()
+            row_idx = template_model_rows.get(normalize_name(generic_name))
+
+        if not row_idx:
+            print(f"مدل '{model_val}' در تمپلیت برای دوربین جلو پیدا نشد (apple parts NORMAL)")
+            continue
+
+        tmpl_ws.cell(row=row_idx, column=cam_col_idx).value = price_val
+
+    tmpl_wb.save(FINAL_TEMPLATE_PATH)
+    print(f"Template updated with front camera prices from {apple_xlsx.name}")
+
+
+def fill_template_from_apple_parts_normal_speakers(apple_xlsx: Path):
+
+    print(f"Reading Apple Parts Normal from: {apple_xlsx}")
+
+    ap_wb = load_workbook(apple_xlsx, data_only=True)
+    ap_ws = ap_wb.active
+
+    tmpl_wb = load_workbook(FINAL_TEMPLATE_PATH)
+    tmpl_ws = tmpl_wb.active
+
+    cam_col_idx = find_column_by_header(tmpl_ws, DOWN_SPEACKERS_HEADER)
+    if cam_col_idx is None:
+        raise ValueError(f"ستونی با عنوان '{DOWN_SPEACKERS_HEADER}' در ردیف اول تمپلیت پیدا نشد.")
+
+    template_model_rows = build_template_model_index(tmpl_ws)
+
+    # Q4:R43
+    for model_val, price_val in ap_ws.iter_rows(
+        min_row=4, max_row=43, min_col=17, max_col=18, values_only=True
+    ):
+        if not model_val or not price_val:
+            continue
+
+        norm_model = normalize_name(str(model_val))
+        row_idx = template_model_rows.get(norm_model)
+
+        if not row_idx:
+            generic_name = "iPhone " + str(model_val).strip()
+            row_idx = template_model_rows.get(normalize_name(generic_name))
+
+        if not row_idx:
+            print(f"مدل '{model_val}' در تمپلیت برای دوربین جلو پیدا نشد (apple parts NORMAL)")
+            continue
+
+        tmpl_ws.cell(row=row_idx, column=cam_col_idx).value = price_val
+
+    tmpl_wb.save(FINAL_TEMPLATE_PATH)
+    print(f"Template updated with front camera prices from {apple_xlsx.name}")
+
+
+def fill_template_from_apple_parts_normal_flat_power(apple_xlsx: Path):
+
+    print(f"Reading Apple Parts Normal from: {apple_xlsx}")
+
+    ap_wb = load_workbook(apple_xlsx, data_only=True)
+    ap_ws = ap_wb.active
+
+    tmpl_wb = load_workbook(FINAL_TEMPLATE_PATH)
+    tmpl_ws = tmpl_wb.active
+
+    cam_col_idx = find_column_by_header(tmpl_ws, FLAT_POWER_HEADER)
+    if cam_col_idx is None:
+        raise ValueError(f"ستونی با عنوان '{FLAT_POWER_HEADER}' در ردیف اول تمپلیت پیدا نشد.")
+
+    template_model_rows = build_template_model_index(tmpl_ws)
+
+    # G4:H43
+    for model_val, price_val in ap_ws.iter_rows(
+        min_row=4, max_row=43, min_col=7, max_col=8, values_only=True
+    ):
+        if not model_val or not price_val:
+            continue
+
+        norm_model = normalize_name(str(model_val))
+        row_idx = template_model_rows.get(norm_model)
+
+        if not row_idx:
+            generic_name = "iPhone " + str(model_val).strip()
+            row_idx = template_model_rows.get(normalize_name(generic_name))
+
+        if not row_idx:
+            print(f"This model : '{model_val}' Not found in file (apple parts NORMAL)")
+            continue
+
+        tmpl_ws.cell(row=row_idx, column=cam_col_idx).value = price_val
+
+    tmpl_wb.save(FINAL_TEMPLATE_PATH)
+    print(f"Template updated with front camera prices from {apple_xlsx.name}")
+
+def fill_template_from_apple_parts_normal_flat_power_volume(apple_xlsx: Path):
+
+    print(f"Reading Apple Parts Normal from: {apple_xlsx}")
+
+    ap_wb = load_workbook(apple_xlsx, data_only=True)
+    ap_ws = ap_wb.active
+
+    tmpl_wb = load_workbook(FINAL_TEMPLATE_PATH)
+    tmpl_ws = tmpl_wb.active
+
+    cam_col_idx = find_column_by_header(tmpl_ws, FLAT_VOLUME_HEADER)
+    if cam_col_idx is None:
+        raise ValueError(f"ستونی با عنوان '{FLAT_VOLUME_HEADER}' در ردیف اول تمپلیت پیدا نشد.")
+
+    template_model_rows = build_template_model_index(tmpl_ws)
+
+    # W4:X43
+    for model_val, price_val in ap_ws.iter_rows(
+        min_row=4, max_row=43, min_col=23, max_col=24, values_only=True
+    ):
+        if not model_val or not price_val:
+            continue
+
+        norm_model = normalize_name(str(model_val))
+        row_idx = template_model_rows.get(norm_model)
+
+        if not row_idx:
+            generic_name = "iPhone " + str(model_val).strip()
+            row_idx = template_model_rows.get(normalize_name(generic_name))
+
+        if not row_idx:
+            print(f"This model : '{model_val}' Not found in file (apple parts NORMAL)")
+            continue
+
+        tmpl_ws.cell(row=row_idx, column=cam_col_idx).value = price_val
+
+    tmpl_wb.save(FINAL_TEMPLATE_PATH)
+    print(f"Template updated with front camera prices from {apple_xlsx.name}")
+
+
+
+
+def fill_template_from_apple_parts_normal_flat_flash_camera(apple_xlsx: Path):
+
+    print(f"Reading Apple Parts Normal from: {apple_xlsx}")
+
+    ap_wb = load_workbook(apple_xlsx, data_only=True)
+    ap_ws = ap_wb.active
+
+    tmpl_wb = load_workbook(FINAL_TEMPLATE_PATH)
+    tmpl_ws = tmpl_wb.active
+
+    cam_col_idx = find_column_by_header(tmpl_ws, FLAT_FLASH_CAMERA_HEADER)
+    if cam_col_idx is None:
+        raise ValueError(f"ستونی با عنوان '{FLAT_FLASH_CAMERA_HEADER}' در ردیف اول تمپلیت پیدا نشد.")
+
+    template_model_rows = build_template_model_index(tmpl_ws)
+
+    # AE4:AF43
+    for model_val, price_val in ap_ws.iter_rows(
+        min_row=4, max_row=43, min_col=31, max_col=32, values_only=True
+    ):
+        if not model_val or not price_val:
+            continue
+
+        norm_model = normalize_name(str(model_val))
+        row_idx = template_model_rows.get(norm_model)
+
+        if not row_idx:
+            generic_name = "iPhone " + str(model_val).strip()
+            row_idx = template_model_rows.get(normalize_name(generic_name))
+
+        if not row_idx:
+            print(f"This model : '{model_val}' Not found in file (apple parts NORMAL)")
+            continue
+
+        tmpl_ws.cell(row=row_idx, column=cam_col_idx).value = price_val
+
+    tmpl_wb.save(FINAL_TEMPLATE_PATH)
+    print(f"Template updated with front camera prices from {apple_xlsx.name}")
+
+
+
 def main():
-    # 1) تبدیل PDFها (اگر لازم است)
+   # if u need to convert pdfs to excel every time --> uncommnet this code 
+
     # convert_pdfs_to_excels()
 
-    # 2) قیمت باتری روکاری از cell HIGH CAPACITY
-    converted_file = OUTPUT_FOLDER / "cell  HIGH CAPACITY.xlsx"   # اگر نام دقیق فرق دارد این را اصلاح کن
-    fill_template_from_converted_excel(converted_file)
+   
+    # converted_file = OUTPUT_FOLDER / "cell  HIGH CAPACITY.xlsx"  
+    # fill_template_from_converted_excel(converted_file)
 
-    # 3) تگ باتری از JC PRODUCTS
-    fill_template_from_jc_products(JC_PRODUCTS_PATH)
+   
+    # fill_template_from_jc_products(JC_PRODUCTS_PATH)
 
-    # 4) دوربین جلو پک کامل از apple parts NORMAL (1)
-    fill_template_from_apple_parts_normal(APPLE_PARTS_NORMAL_PATH)
+  
+    # fill_template_from_apple_parts_normal(APPLE_PARTS_NORMAL_PATH)
 
+    # fill_template_from_apple_parts_normal_speakers(APPLE_PARTS_NORMAL_PATH)
+
+    fill_template_from_apple_parts_normal_downSpeackers(APPLE_PARTS_NORMAL_PATH)
+    fill_template_from_apple_parts_normal_flat_power_volume(APPLE_PARTS_NORMAL_PATH)
+    fill_template_from_apple_parts_normal_flat_flash_camera(APPLE_PARTS_NORMAL_PATH)
 
 if __name__ == "__main__":
     main()
