@@ -657,10 +657,108 @@ def fill_template_from_apple_parts_rayan_frame(apple_xlsx: Path):
     )
 
 
+def fill_template_from_apple_parts_normal_charge_flat(apple_xlsx: Path):
+    """Fill 'فلت شارژ' from M4:N38 in Apple_Parts_normal.xlsx."""
+    logger.info(f"Reading Apple Parts normal (frame) from: {apple_xlsx}")
+
+    ap_wb = load_workbook(apple_xlsx, data_only=True)
+    ap_ws = ap_wb.active
+
+    tmpl_wb = load_workbook(FINAL_TEMPLATE_PATH)
+    tmpl_ws = tmpl_wb.active
+
+    col_idx = find_column_by_header(tmpl_ws, CHARGE_FLAT_HEADER)
+    if col_idx is None:
+        raise ValueError(f"Header '{CHARGE_FLAT_HEADER}' not found in final template.")
+
+    template_model_rows = build_template_model_index(tmpl_ws)
+
+    for model_val, price_val in ap_ws.iter_rows(
+        min_row=6, max_row=43, min_col=5, max_col=6, values_only=True
+    ):
+        if not model_val or not price_val:
+            continue
+
+        norm_model = normalize_name(str(model_val))
+        row_idx = template_model_rows.get(norm_model)
+
+        if not row_idx:
+            generic_name = "iPhone " + str(model_val).strip()
+            row_idx = template_model_rows.get(normalize_name(generic_name))
+
+        if not row_idx:
+            logger.warning(
+                f"Model '{model_val}' for frame not found in final template (Apple_Parts_rayan)"
+            )
+            continue
+
+        #tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
+        cell = tmpl_ws.cell(row=row_idx, column=col_idx)
+        cell.value = append_price(cell.value, price_val)
+
+
+    tmpl_wb.save(FINAL_TEMPLATE_PATH)
+    logger.info(
+        f"Template updated with charge-flat prices from {apple_xlsx.name}"
+    )
+
+
+def fill_template_from_apple_parts_rayan_charge_flat(apple_xlsx: Path):
+    """Fill 'فلت شارژ' from M4:N38 in Apple_Parts_rayan.xlsx."""
+    logger.info(f"Reading Apple Parts rayan (frame) from: {apple_xlsx}")
+
+    ap_wb = load_workbook(apple_xlsx, data_only=True)
+    ap_ws = ap_wb.active
+
+    tmpl_wb = load_workbook(FINAL_TEMPLATE_PATH)
+    tmpl_ws = tmpl_wb.active
+
+    col_idx = find_column_by_header(tmpl_ws, CHARGE_FLAT_HEADER)
+    if col_idx is None:
+        raise ValueError(f"Header '{CHARGE_FLAT_HEADER}' not found in final template.")
+
+    template_model_rows = build_template_model_index(tmpl_ws)
+
+    for model_val, price_val in ap_ws.iter_rows(
+        min_row=4, max_row=38, min_col=11, max_col=12, values_only=True
+    ):
+        if not model_val or not price_val:
+            continue
+
+        norm_model = normalize_name(str(model_val))
+        row_idx = template_model_rows.get(norm_model)
+
+        if not row_idx:
+            generic_name = "iPhone " + str(model_val).strip()
+            row_idx = template_model_rows.get(normalize_name(generic_name))
+
+        if not row_idx:
+            logger.warning(
+                f"Model '{model_val}' for frame not found in final template (Apple_Parts_rayan)"
+            )
+            continue
+
+        # tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
+        cell = tmpl_ws.cell(row=row_idx, column=col_idx)
+        cell.value = append_price(cell.value, price_val)
+
+    tmpl_wb.save(FINAL_TEMPLATE_PATH)
+    logger.info(
+        f"Template updated with charge-flat prices from {apple_xlsx.name}"
+    )
 
 
 
 # (You can add the rest of your fill_* functions here in same style if needed)
+
+
+# append price function for put all pricess of diffrent pdft together 
+def append_price(existing_value, new_price):
+    if existing_value is None or str(existing_value).strip() == "":
+        return str(new_price)
+
+    return f"{existing_value} / {new_price}"
+
 
 
 # ==================== HIGH-LEVEL PIPELINE ====================
@@ -710,12 +808,14 @@ def run_full_price_pipeline():
         fill_template_from_apple_parts_normal_flat_power_volume(APPLE_PARTS_NORMAL_PATH)
         fill_template_from_apple_parts_normal_flat_flash_camera(APPLE_PARTS_NORMAL_PATH)
         fill_template_from_apple_parts_normal_vibration(APPLE_PARTS_NORMAL_PATH)
+        fill_template_from_apple_parts_normal_charge_flat(APPLE_PARTS_NORMAL_PATH)
     else:
         logger.info("apple parts NORMAL (1).xlsx not found, skipping some parts.")
 
     # 5) Apple parts rayan (if exists)
     if APPLE_PARTS_RAYAN_PATH.exists():
         fill_template_from_apple_parts_rayan_frame(APPLE_PARTS_RAYAN_PATH)
+        fill_template_from_apple_parts_rayan_charge_flat(APPLE_PARTS_RAYAN_PATH)
     else:
         logger.info("Apple_Parts_rayan.xlsx not found, skipping rayan frame.")
 
