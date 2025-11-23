@@ -69,6 +69,19 @@ FIX_CAMERA_ERROR_HEADER = "رفع ارور دوربین"
 SHIELD_HEADER = "شیلد"
 ICLOUD_MOTHERBOARD_HEADER = "مادربرد آیکلود کامل"
 
+# multiple pdf
+LCD_CHANGED_GLASS_HEADER = "Lcd چنج گلس یا فلت خورده"
+LCD_COPY_HEADER = "Lcd copy"
+LCD_1_CHANGED_FRAME_HEADER ="Lcd1.1 فریم تعویض" 
+CHARGE_FLAT_HEADER = "فلت شارژ"
+LCD_ROKARI_WITH_POLISH_HEADER ="Lcd روکاری بازاری,پولیش دارد"
+LCD_ROKARI_WITHOUT_POLISH_HEADER ="Lcd روکاری بدون پولیش"
+LCD_NEW_APPLE_HEADER ="Lcd new apple"
+LCD_USED_NORMAL_HEADER ="Lcd used normal"
+BACK_CAMERA_HEADER = "دوربین عقب"
+
+
+
 # External Excel sources (expected converted files)
 JC_PRODUCTS_PATH = Path(
     r"D:\Projects\pdfConvertor\ProductsPriceAgent\converted_excels\JC PRODUCTS NORMAL.xlsx"
@@ -642,6 +655,10 @@ def fill_template_from_apple_parts_rayan_frame(apple_xlsx: Path):
     logger.info(
         f"Template updated with frame prices from {apple_xlsx.name}"
     )
+
+
+
+
 
 # (You can add the rest of your fill_* functions here in same style if needed)
 
