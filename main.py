@@ -1,6 +1,8 @@
 from pathlib import Path
 import re
 import logging
+import asyncio
+from typing import Dict, List
 
 import win32com.client as win32
 from openpyxl import load_workbook
@@ -36,10 +38,8 @@ OUTPUT_FOLDER = Path(
     r"D:\Projects\pdfConvertor\ProductsPriceAgent\converted_excels"
 )
 
-# Excel Power Query name
 QUERY_NAME = "Query1"
 
-# Final template file (main product list)
 FINAL_TEMPLATE_PATH = Path(
     r"D:\Projects\pdfConvertor\ProductsPriceAgent\excel_data\FinalTemplate.xlsx"
 )
@@ -67,7 +67,6 @@ FIX_CAMERA_ERROR_HEADER = "رفع ارور دوربین"
 SHIELD_HEADER = "شیلد"
 ICLOUD_MOTHERBOARD_HEADER = "مادربرد آیکلود کامل"
 
-# multiple pdf
 LCD_CHANGED_GLASS_HEADER = "Lcd چنج گلس یا فلت خورده"
 LCD_COPY_HEADER = "Lcd copy"
 LCD_1_CHANGED_FRAME_HEADER = "Lcd1.1 فریم تعویض"
@@ -78,24 +77,27 @@ LCD_NEW_APPLE_HEADER = "Lcd new apple"
 LCD_USED_NORMAL_HEADER = "Lcd used normal"
 BACK_CAMERA_HEADER = "دوربین عقب"
 
+# ========================== BUFFERS ============================
+
+USER_PDF_BUFFER: Dict[int, List[Path]] = {}
+USER_TIMER: Dict[int, asyncio.Task] = {}
 
 # ======================== CORE HELPERS =========================
 
+
 def update_query_pdf_path(query, new_pdf_path: Path):
-    """Update Power Query M formula with a new PDF file path."""
     formula = query.Formula
     pdf_str = new_pdf_path.resolve().as_posix()
 
     new_formula = re.sub(
-        r'File\.Contents\(".*?"\)',     # pattern
-        f'File.Contents("{pdf_str}")',  # replacement
+        r'File\.Contents\(".*?"\)',
+        f'File.Contents("{pdf_str}")',
         formula,
     )
     query.Formula = new_formula
 
 
 def normalize_name(s: str) -> str:
-    """Normalize model names (lowercase, collapse spaces) for robust matching."""
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
@@ -122,7 +124,6 @@ MODEL_MAPPING = {
 
 
 def build_template_model_index(tmpl_ws):
-    """Build a dict: normalized model name -> row index in final template."""
     index = {}
     for row in range(2, tmpl_ws.max_row + 1):
         val = tmpl_ws.cell(row=row, column=1).value
@@ -133,7 +134,6 @@ def build_template_model_index(tmpl_ws):
 
 
 def find_column_by_header(ws, header_text: str):
-    """Return column index for a given header text in row 1."""
     for cell in ws[1]:
         if str(cell.value).strip() == header_text:
             return cell.column
@@ -141,19 +141,25 @@ def find_column_by_header(ws, header_text: str):
 
 
 def append_price(existing_value, new_price):
-    """Append new_price to existing_value separated by ' / '."""
+    new_str = str(new_price).strip()
+    if new_str == "":
+        return existing_value
+
     if existing_value is None or str(existing_value).strip() == "":
-        return str(new_price)
-    return f"{existing_value} / {new_price}"
+        return new_str
+
+    parts = [p.strip() for p in str(existing_value).split("/") if p.strip()]
+    if new_str in parts:
+        return " / ".join(parts)
+
+    parts.append(new_str)
+    return " / ".join(parts)
 
 
-# ================= PDF -> EXCEL (ONLY ONE PDF) =================
+# ================= PDF -> EXCEL (ONE FILE) =====================
+
 
 def convert_pdf_to_excel(pdf_path: Path) -> Path:
-    """
-    Convert a single PDF to Excel using Excel Power Query template.
-    Returns path to created .xlsx in OUTPUT_FOLDER.
-    """
     OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
 
     if not TEMPLATE_IMPORT_XLSX.exists():
@@ -163,18 +169,16 @@ def convert_pdf_to_excel(pdf_path: Path) -> Path:
 
     out_path = OUTPUT_FOLDER / f"{pdf_path.stem}.xlsx"
 
-    # Delete old Excel for this pdf (to avoid overwrite prompts)
     if out_path.exists():
         try:
             out_path.unlink()
-            logger.info(f"Deleted old converted file for this PDF -> {out_path}")
+            logger.info("Deleted old converted file: %s", out_path)
         except Exception as e:
-            logger.warning(f"Could not delete old file {out_path}: {e}")
+            logger.warning("Could not delete %s: %s", out_path, e)
 
-    logger.info(f"Converting single PDF to Excel: {pdf_path} -> {out_path}")
+    logger.info("Converting PDF to Excel: %s -> %s", pdf_path, out_path)
 
     excel = win32.Dispatch("Excel.Application")
-    # excel.Visible and DisplayAlerts را دست نمی‌زنیم که خطا ندهد
 
     try:
         wb = excel.Workbooks.Open(str(TEMPLATE_IMPORT_XLSX))
@@ -188,7 +192,7 @@ def convert_pdf_to_excel(pdf_path: Path) -> Path:
         wb.SaveAs(str(out_path), FileFormat=51)
         wb.Close(SaveChanges=False)
 
-        logger.info(f"Saved Excel -> {out_path}")
+        logger.info("Saved Excel: %s", out_path)
     finally:
         excel.Quit()
 
@@ -198,8 +202,7 @@ def convert_pdf_to_excel(pdf_path: Path) -> Path:
 # ========================= FILL FUNCTIONS =========================
 
 def fill_template_from_converted_excel(converted_xlsx: Path):
-    """Fill 'باطری روکاری' from a converted Excel (e.g. cell HIGH CAPACITY)."""
-    logger.info(f"Reading data from: {converted_xlsx}")
+    logger.info("Reading battery prices from: %s", converted_xlsx)
 
     data_wb = load_workbook(converted_xlsx, data_only=True)
     data_ws = data_wb.active
@@ -233,28 +236,29 @@ def fill_template_from_converted_excel(converted_xlsx: Path):
             if norm in template_model_rows:
                 mapped_models = [generic_name]
             else:
-                logger.warning(
-                    f"Unknown model in cell HIGH CAPACITY: {model_val}  (skipped)"
-                )
+                logger.warning("Unknown model in battery file: %s", model_val)
                 continue
 
         for tmpl_model_name in mapped_models:
             row_idx = template_model_rows.get(normalize_name(tmpl_model_name))
             if not row_idx:
                 logger.warning(
-                    f"Model '{tmpl_model_name}' not found in final template (from {model_val})"
+                    "Model '%s' not found in final template (from %s)",
+                    tmpl_model_name,
+                    model_val,
                 )
                 continue
 
             tmpl_ws.cell(row=row_idx, column=target_col_idx).value = price_val
 
+    data_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(f"Template updated with battery prices from {converted_xlsx.name}")
+    tmpl_wb.close()
+    logger.info("Battery prices updated from %s", converted_xlsx.name)
 
 
 def fill_template_from_jc_products(jc_xlsx: Path):
-    """Read JC PRODUCTS (E7:F28) and fill 'تگ باطری'."""
-    logger.info(f"Reading JC Products from: {jc_xlsx}")
+    logger.info("Reading JC Products from: %s", jc_xlsx)
 
     jc_wb = load_workbook(jc_xlsx, data_only=True)
     jc_ws = jc_wb.active
@@ -283,19 +287,20 @@ def fill_template_from_jc_products(jc_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for battery tag not found in final template (JC PRODUCTS)"
+                "Model '%s' for battery tag not found in final template", model_val
             )
             continue
 
         tmpl_ws.cell(row=row_idx, column=tag_col_idx).value = tag_val
 
+    jc_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(f"Template updated with battery tags from {jc_xlsx.name}")
+    tmpl_wb.close()
+    logger.info("Battery tags updated from %s", jc_xlsx.name)
 
 
 def fill_template_from_apple_parts_normal(apple_xlsx: Path):
-    """Fill 'دوربین جلو پک کامل' from C4:D43."""
-    logger.info(f"Reading Apple Parts Normal from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Normal (front camera) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -324,21 +329,20 @@ def fill_template_from_apple_parts_normal(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for front camera not found in final template (apple parts NORMAL)"
+                "Model '%s' for front camera not found in final template", model_val
             )
             continue
 
         tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with front camera prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Front camera prices updated from %s", apple_xlsx.name)
 
 
 def fill_template_from_apple_parts_normal_downSpeackers(apple_xlsx: Path):
-    """Fill 'اسپیکر بالا' from S4:T43."""
-    logger.info(f"Reading Apple Parts Normal (upper speaker) from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Normal (upper speaker) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -367,21 +371,20 @@ def fill_template_from_apple_parts_normal_downSpeackers(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for upper speaker not found in final template (apple parts NORMAL)"
+                "Model '%s' for upper speaker not found in final template", model_val
             )
             continue
 
         tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with upper speaker prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Upper speaker prices updated from %s", apple_xlsx.name)
 
 
 def fill_template_from_apple_parts_normal_speakers(apple_xlsx: Path):
-    """Fill 'اسپیکر پایین' from Q4:R43."""
-    logger.info(f"Reading Apple Parts Normal (lower speaker) from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Normal (lower speaker) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -412,21 +415,20 @@ def fill_template_from_apple_parts_normal_speakers(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for lower speaker not found in final template (apple parts NORMAL)"
+                "Model '%s' for lower speaker not found in final template", model_val
             )
             continue
 
         tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with lower speaker prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Lower speaker prices updated from %s", apple_xlsx.name)
 
 
 def fill_template_from_apple_parts_normal_flat_power(apple_xlsx: Path):
-    """Fill 'فلت پاور' from G4:H43."""
-    logger.info(f"Reading Apple Parts Normal (flat power) from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Normal (flat power) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -455,21 +457,20 @@ def fill_template_from_apple_parts_normal_flat_power(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for flat power not found in final template (apple parts NORMAL)"
+                "Model '%s' for flat power not found in final template", model_val
             )
             continue
 
         tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with flat power prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Flat power prices updated from %s", apple_xlsx.name)
 
 
 def fill_template_from_apple_parts_normal_flat_power_volume(apple_xlsx: Path):
-    """Fill 'فلت ولوم' from W4:X43."""
-    logger.info(f"Reading Apple Parts Normal (flat volume) from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Normal (flat volume) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -500,21 +501,20 @@ def fill_template_from_apple_parts_normal_flat_power_volume(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for flat volume not found in final template (apple parts NORMAL)"
+                "Model '%s' for flat volume not found in final template", model_val
             )
             continue
 
         tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with flat volume prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Flat volume prices updated from %s", apple_xlsx.name)
 
 
 def fill_template_from_apple_parts_normal_flat_flash_camera(apple_xlsx: Path):
-    """Fill 'فلت فلش دوربین' from AE4:AF43."""
-    logger.info(f"Reading Apple Parts Normal (flash flat) from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Normal (flash flat) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -545,21 +545,20 @@ def fill_template_from_apple_parts_normal_flat_flash_camera(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for flash flat not found in final template (apple parts NORMAL)"
+                "Model '%s' for flash flat not found in final template", model_val
             )
             continue
 
         tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with flash flat prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Flash flat prices updated from %s", apple_xlsx.name)
 
 
 def fill_template_from_apple_parts_normal_vibration(apple_xlsx: Path):
-    """Fill 'موتور ویبره' from U4:V43."""
-    logger.info(f"Reading Apple Parts Normal (vibration) from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Normal (vibration) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -590,21 +589,20 @@ def fill_template_from_apple_parts_normal_vibration(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for vibration not found in final template (apple parts NORMAL)"
+                "Model '%s' for vibration not found in final template", model_val
             )
             continue
 
         tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with vibration prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Vibration prices updated from %s", apple_xlsx.name)
 
 
 def fill_template_from_apple_parts_rayan_frame(apple_xlsx: Path):
-    """Fill 'شاسی با فلت' from M4:N38 in Apple_Parts_rayan.xlsx."""
-    logger.info(f"Reading Apple Parts rayan (frame) from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Rayan (frame) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -633,21 +631,20 @@ def fill_template_from_apple_parts_rayan_frame(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for frame not found in final template (Apple_Parts_rayan)"
+                "Model '%s' for frame not found in final template (Rayan)", model_val
             )
             continue
 
         tmpl_ws.cell(row=row_idx, column=col_idx).value = price_val
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with frame prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Frame prices updated from %s", apple_xlsx.name)
 
 
 def fill_template_from_apple_parts_normal_charge_flat(apple_xlsx: Path):
-    """Fill 'فلت شارژ' from Apple_Parts_normal.xlsx."""
-    logger.info(f"Reading Apple Parts normal (charge flat) from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Normal (charge flat) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -676,22 +673,22 @@ def fill_template_from_apple_parts_normal_charge_flat(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for charge flat not found in final template (Apple_Parts_normal)"
+                "Model '%s' for charge flat not found in final template (Normal)",
+                model_val,
             )
             continue
 
         cell = tmpl_ws.cell(row=row_idx, column=col_idx)
         cell.value = append_price(cell.value, price_val)
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with charge-flat prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Charge-flat prices (Normal) updated from %s", apple_xlsx.name)
 
 
 def fill_template_from_apple_parts_rayan_charge_flat(apple_xlsx: Path):
-    """Fill 'فلت شارژ' from Apple_Parts_rayan.xlsx."""
-    logger.info(f"Reading Apple Parts rayan (charge flat) from: {apple_xlsx}")
+    logger.info("Reading Apple Parts Rayan (charge flat) from: %s", apple_xlsx)
 
     ap_wb = load_workbook(apple_xlsx, data_only=True)
     ap_ws = ap_wb.active
@@ -720,80 +717,111 @@ def fill_template_from_apple_parts_rayan_charge_flat(apple_xlsx: Path):
 
         if not row_idx:
             logger.warning(
-                f"Model '{model_val}' for charge flat not found in final template (Apple_Parts_rayan)"
+                "Model '%s' for charge flat not found in final template (Rayan)",
+                model_val,
             )
             continue
 
         cell = tmpl_ws.cell(row=row_idx, column=col_idx)
         cell.value = append_price(cell.value, price_val)
 
+    ap_wb.close()
     tmpl_wb.save(FINAL_TEMPLATE_PATH)
-    logger.info(
-        f"Template updated with charge-flat prices from {apple_xlsx.name}"
-    )
+    tmpl_wb.close()
+    logger.info("Charge-flat prices (Rayan) updated from %s", apple_xlsx.name)
 
 
-# ==================== HIGH-LEVEL PIPELINE (SINGLE PDF) ====================
+# ==================== HIGH-LEVEL PIPELINE (BATCH) ====================
 
-def run_full_price_pipeline(pdf_path: Path):
-    """
-    Run pipeline ONLY for the given PDF:
-    - Convert that PDF to Excel
-    - Depending on its name, apply the correct fill_* functions.
-    """
-    logger.info("Starting price pipeline for single PDF...")
+
+def run_full_price_pipeline_for_batch(pdf_paths: List[Path]):
+    logger.info("Starting price pipeline for batch: %d file(s)", len(pdf_paths))
 
     if not FINAL_TEMPLATE_PATH.exists():
         raise FileNotFoundError(
             f"Final template XLSX not found: {FINAL_TEMPLATE_PATH}"
         )
 
-    # 1) Convert this PDF to Excel
-    converted_file = convert_pdf_to_excel(pdf_path)
+    for pdf_path in pdf_paths:
+        converted_file = convert_pdf_to_excel(pdf_path)
+        s = pdf_path.stem.strip().lower()
 
-    stem = pdf_path.stem.strip().lower()
+        if "cell" in s and "high" in s:
+            fill_template_from_converted_excel(converted_file)
 
-    # 2) Decide which fill functions to call based on filename
-    # You can adjust conditions as you like.
+        elif "jc" in s and "product" in s:
+            fill_template_from_jc_products(converted_file)
 
-    if "cell" in stem and "high" in stem:
-        # Cell HIGH CAPACITY -> battery prices
-        fill_template_from_converted_excel(converted_file)
+        elif "apple" in s and "normal" in s:
+            fill_template_from_apple_parts_normal(converted_file)
+            fill_template_from_apple_parts_normal_speakers(converted_file)
+            fill_template_from_apple_parts_normal_downSpeackers(converted_file)
+            fill_template_from_apple_parts_normal_flat_power(converted_file)
+            fill_template_from_apple_parts_normal_flat_power_volume(converted_file)
+            fill_template_from_apple_parts_normal_flat_flash_camera(converted_file)
+            fill_template_from_apple_parts_normal_vibration(converted_file)
+            fill_template_from_apple_parts_normal_charge_flat(converted_file)
 
-    elif "jc" in stem and "product" in stem:
-        # JC PRODUCTS NORMAL
-        fill_template_from_jc_products(converted_file)
+        elif "rayan" in s:
+            fill_template_from_apple_parts_rayan_frame(converted_file)
+            fill_template_from_apple_parts_rayan_charge_flat(converted_file)
 
-    elif "apple" in stem and "normal" in stem:
-        # apple parts NORMAL (1)
-        fill_template_from_apple_parts_normal(converted_file)
-        fill_template_from_apple_parts_normal_speakers(converted_file)
-        fill_template_from_apple_parts_normal_downSpeackers(converted_file)
-        fill_template_from_apple_parts_normal_flat_power(converted_file)
-        fill_template_from_apple_parts_normal_flat_power_volume(converted_file)
-        fill_template_from_apple_parts_normal_flat_flash_camera(converted_file)
-        fill_template_from_apple_parts_normal_vibration(converted_file)
-        fill_template_from_apple_parts_normal_charge_flat(converted_file)
+        else:
+            logger.info("No rule defined for PDF name: %s", pdf_path.name)
 
-    elif "rayan" in stem:
-        # Apple_Parts_rayan
-        fill_template_from_apple_parts_rayan_frame(converted_file)
-        fill_template_from_apple_parts_rayan_charge_flat(converted_file)
-
-    else:
-        logger.info(f"No matching rule for PDF name: {pdf_path.name} (nothing filled).")
-
-    logger.info("Price pipeline for this PDF finished.")
+    logger.info("Batch price pipeline finished.")
 
 
 # ====================== TELEGRAM BOT PART ======================
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام 👋\n"
-        "فایل PDF قیمت را بفرست.\n"
-        "فقط همان فایل تبدیل و در تمپلیت نهایی اعمال می‌شود و خروجی اکسل برایت ارسال می‌شود."
+        "سلام\n"
+        "فایل‌های PDF لیست قیمت را ارسال کنید.\n"
+        "می‌توانید چند فایل پشت سر هم بفرستید؛ پس از دریافت همهٔ فایل‌ها، پردازش انجام می‌شود و یک فایل اکسل نهایی برای شما ارسال خواهد شد."
     )
+
+
+async def process_user_pdfs(user_id: int, message):
+    pdf_list = USER_PDF_BUFFER.get(user_id, [])
+    if not pdf_list:
+        return
+
+    USER_PDF_BUFFER[user_id] = []
+    USER_TIMER.pop(user_id, None)
+
+    try:
+        await message.reply_text(
+            "فایل‌ها دریافت شد. در حال پردازش اطلاعات، لطفاً منتظر بمانید..."
+        )
+
+        run_full_price_pipeline_for_batch(pdf_list)
+
+        if FINAL_TEMPLATE_PATH.exists():
+            with open(FINAL_TEMPLATE_PATH, "rb") as f:
+                await message.reply_document(
+                    document=f,
+                    filename=FINAL_TEMPLATE_PATH.name,
+                    caption="فایل اکسل نهایی آماده است.",
+                )
+        else:
+            await message.reply_text(
+                "در حین پردازش، فایل نهایی پیدا نشد. لطفاً تنظیمات سرور بررسی شود."
+            )
+
+    except FileNotFoundError as e:
+        logger.exception("File not found in pipeline")
+        await message.reply_text(
+            "در حین پردازش، فایل‌های لازم پیدا نشدند.\n"
+            f"جزئیات: {e}"
+        )
+    except Exception:
+        logger.exception("Unexpected error in pipeline")
+        await message.reply_text(
+            "در حین پردازش فایل‌ها خطایی رخ داد.\n"
+            "لطفاً وضعیت فایل‌ها را بررسی کنید یا با پشتیبان سیستم هماهنگ شوید."
+        )
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -803,53 +831,47 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not doc:
         return
 
-    # Accept only PDFs
     if doc.mime_type != "application/pdf" and not doc.file_name.lower().endswith(".pdf"):
-        await message.reply_text("لطفاً فقط فایل PDF ارسال کن.")
+        await message.reply_text("لطفاً فقط فایل‌های PDF ارسال شود.")
         return
 
+    user_id = message.from_user.id
     PDF_FOLDER.mkdir(parents=True, exist_ok=True)
 
     filename = doc.file_name or f"{doc.file_unique_id}.pdf"
     pdf_path = PDF_FOLDER / filename
 
-    await message.reply_text(
-        f"فایل PDF '{filename}' دریافت شد.\nدر حال پردازش..."
-    )
-
     try:
         tg_file = await doc.get_file()
         await tg_file.download_to_drive(str(pdf_path))
-        logger.info(f"Downloaded PDF to {pdf_path}")
-
-        # 🔹 حالا فقط همین یک PDF را پردازش می‌کنیم
-        run_full_price_pipeline(pdf_path)
-
-        # Send final template back
-        if FINAL_TEMPLATE_PATH.exists():
-            with open(FINAL_TEMPLATE_PATH, "rb") as f:
-                await message.reply_document(
-                    document=f,
-                    filename=FINAL_TEMPLATE_PATH.name,
-                    caption="فایل Excel به‌روزشده آماده است ✅",
-                )
-        else:
-            await message.reply_text(
-                "Error: Final template file was not found after processing."
-            )
-
-    except FileNotFoundError as e:
-        logger.exception("File not found error in pipeline")
+        logger.info("Downloaded PDF for user %s to %s", user_id, pdf_path)
+    except Exception:
+        logger.exception("Error downloading file")
         await message.reply_text(
-            f"File error during processing:\n{e}\n\n"
-            "لطفاً بررسی کن فایل‌های تمپلیت روی سرور وجود داشته باشند."
+            "در دریافت فایل مشکلی پیش آمد. لطفاً دوباره تلاش کنید."
         )
-    except Exception as e:
-        logger.exception("Unexpected error in pipeline")
-        await message.reply_text(
-            "یک خطای غیرمنتظره در حین پردازش رخ داد.\n"
-            f"جزئیات: {e}"
-        )
+        return
+
+    USER_PDF_BUFFER.setdefault(user_id, []).append(pdf_path)
+
+    old_task = USER_TIMER.get(user_id)
+    if old_task is not None and not old_task.done():
+        old_task.cancel()
+
+    async def timer_task():
+        try:
+            await asyncio.sleep(3)
+            await process_user_pdfs(user_id, message)
+        except asyncio.CancelledError:
+            return
+
+    USER_TIMER[user_id] = asyncio.create_task(timer_task())
+
+    await message.reply_text(
+        "فایل دریافت شد.\n"
+        "در صورت نیاز، فایل‌های دیگر را هم ارسال کنید.\n"
+        "اگر فایل جدیدی ارسال نشود، پس از چند ثانیه پردازش به‌صورت خودکار آغاز می‌شود."
+    )
 
 
 def main():
