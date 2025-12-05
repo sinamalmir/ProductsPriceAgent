@@ -4,6 +4,8 @@ import logging
 import asyncio
 from typing import Dict, List
 
+from google_sync import update_google_sheet_from_excel 
+
 import win32com.client as win32
 from openpyxl import load_workbook
 
@@ -793,11 +795,26 @@ async def process_user_pdfs(user_id: int, message):
 
     try:
         await message.reply_text(
-            "فایل‌ها دریافت شد. در حال پردازش اطلاعات، لطفاً منتظر بمانید..."
+            "فایل‌ها دریافت شد. پردازش آغاز شده و نتیجه به‌زودی ارسال می‌شود..."
         )
 
+        # Run processing for ONLY these PDFs
         run_full_price_pipeline_for_batch(pdf_list)
 
+        # ----------------------------------------
+        # Push Excel to Google Sheets
+        # ----------------------------------------
+        try:
+            update_google_sheet_from_excel(FINAL_TEMPLATE_PATH)
+        except Exception as e:
+            logger.exception("Error updating Google Sheet")
+            await message.reply_text(
+                "پرونده نهایی ایجاد شد اما همگام‌سازی با Google Sheets با خطا مواجه شد."
+            )
+
+        # ----------------------------------------
+        # Send final Excel back to user
+        # ----------------------------------------
         if FINAL_TEMPLATE_PATH.exists():
             with open(FINAL_TEMPLATE_PATH, "rb") as f:
                 await message.reply_document(
@@ -807,21 +824,15 @@ async def process_user_pdfs(user_id: int, message):
                 )
         else:
             await message.reply_text(
-                "در حین پردازش، فایل نهایی پیدا نشد. لطفاً تنظیمات سرور بررسی شود."
+                "خطا: فایل نهایی پس از پردازش پیدا نشد."
             )
 
-    except FileNotFoundError as e:
-        logger.exception("File not found in pipeline")
+    except Exception as e:
+        logger.exception("Unexpected error during batch processing")
         await message.reply_text(
-            "در حین پردازش، فایل‌های لازم پیدا نشدند.\n"
-            f"جزئیات: {e}"
+            "در زمان پردازش مشکلی رخ داد. لطفاً دوباره تلاش کنید."
         )
-    except Exception:
-        logger.exception("Unexpected error in pipeline")
-        await message.reply_text(
-            "در حین پردازش فایل‌ها خطایی رخ داد.\n"
-            "لطفاً وضعیت فایل‌ها را بررسی کنید یا با پشتیبان سیستم هماهنگ شوید."
-        )
+
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
